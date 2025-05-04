@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+import sys, pathlib, pickle, pandas as pd, networkx as nx, re
+base=pathlib.Path(sys.argv[1])
+def clean(t): return re.sub(r'[^A-Za-z0-9]+',' ',str(t)).lower()
+def tokens(s): return re.findall(r'[a-z0-9]{3,}', s)
+def top(series,k):
+    vc=pd.Series(' '.join(series).split()).value_counts()
+    return set(vc.head(k).index)
+micro = top(pd.read_parquet(base/'gkg.parquet').Themes.fillna('').map(clean),2000)
+meso  = top(pd.read_parquet(base/'wikipedia_revisions.parquet').motif.map(clean),200)
+macro = top(pd.read_parquet(base/'gdelt.parquet').astype(str).agg(' '.join,1).map(clean),500)
+G=nx.Graph()
+for t in micro: G.add_node('micro:'+t,tier='micro')
+for t in meso:  G.add_node('meso:'+t, tier='meso')
+for t in macro: G.add_node('macro:'+t,tier='macro')
+for t in micro&meso:  G.add_edge('micro:'+t,'meso:'+t,tier='micro–meso')
+for t in micro&macro: G.add_edge('micro:'+t,'macro:'+t,tier='micro–macro')
+for t in meso&macro:  G.add_edge('meso:'+t ,'macro:'+t,tier='meso–macro')
+pickle.dump(G,open(base/'closure_graph.gpickle','wb'))
+print("graph rebuilt — nodes",G.number_of_nodes(),"edges",G.number_of_edges())
